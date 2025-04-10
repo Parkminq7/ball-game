@@ -1,0 +1,285 @@
+<<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>화살 피하기 게임</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #111;
+      font-family: sans-serif;
+    }
+    canvas {
+      display: block;
+    }
+    #timer, #score {
+      position: absolute;
+      top: 15px;
+      font-size: 24px;
+      color: white;
+      z-index: 10;
+    }
+    #timer {
+      right: 20px;
+    }
+    #score {
+      left: 20px;
+    }
+    #restartBtn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 12px 24px;
+      font-size: 20px;
+      background-color: #00ffcc;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: none;
+      z-index: 20;
+    }
+    #restartBtn:hover {
+      background-color: #00ddaa;
+    }
+    .controls {
+      position: absolute;
+      bottom: 30px;
+      left: 100px;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 60px 60px 60px;
+      grid-template-rows: 60px 60px 60px;
+      gap: 10px;
+      z-index: 15;
+    }
+    .btn {
+      width: 60px;
+      height: 60px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid #00ffcc;
+      border-radius: 12px;
+      color: #00ffcc;
+      font-size: 24px;
+      text-align: center;
+      line-height: 60px;
+      user-select: none;
+    }
+    .btn:active {
+      background: rgba(0, 255, 204, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="timer">Time: 0s</div>
+  <div id="score">Score: 0</div>
+  <button id="restartBtn">재시작</button>
+
+  <div class="controls">
+    <div></div>
+    <div class="btn" data-dir="up">↑</div>
+    <div></div>
+    <div class="btn" data-dir="left">←</div>
+    <div></div>
+    <div class="btn" data-dir="right">→</div>
+    <div></div>
+    <div class="btn" data-dir="down">↓</div>
+    <div></div>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const timerDisplay = document.getElementById('timer');
+    const scoreDisplay = document.getElementById('score');
+    const restartBtn = document.getElementById('restartBtn');
+    const controls = document.querySelectorAll('.btn');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    let ball, arrows, keys, gameOver, spawnInterval, lastSpawn;
+    let startTime, lastScoreTime, score, currentBonus;
+
+    function resetGame() {
+      ball = {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        radius: 15,
+        speed: 5,
+        dx: 0,
+        dy: 0,
+      };
+      keys = {};
+      arrows = [];
+      gameOver = false;
+      spawnInterval = 1500;
+      lastSpawn = Date.now();
+      startTime = Date.now();
+      lastScoreTime = Date.now();
+      score = 0;
+      currentBonus = 10;
+      scoreDisplay.textContent = `Score: 0`;
+      timerDisplay.textContent = `Time: 0s`;
+      restartBtn.style.display = "none";
+      requestAnimationFrame(update);
+    }
+
+    document.addEventListener('keydown', e => keys[e.key] = true);
+    document.addEventListener('keyup', e => keys[e.key] = false);
+
+    controls.forEach(btn => {
+      const dir = btn.dataset.dir;
+      const setKey = (state) => {
+        keys[`Arrow${dir.charAt(0).toUpperCase() + dir.slice(1)}`] = state;
+      };
+      btn.addEventListener('touchstart', e => { e.preventDefault(); setKey(true); });
+      btn.addEventListener('touchend', e => { e.preventDefault(); setKey(false); });
+      btn.addEventListener('mousedown', () => setKey(true));
+      btn.addEventListener('mouseup', () => setKey(false));
+      btn.addEventListener('mouseleave', () => setKey(false));
+    });
+
+    function spawnArrow() {
+      const dir = Math.floor(Math.random() * 4);
+      let arrow = {
+        width: 10,
+        height: 30,
+        speed: 2 + Math.random() * 2,
+      };
+      if (dir === 0) {
+        arrow.x = Math.random() * canvas.width;
+        arrow.y = -30;
+        arrow.dx = 0;
+        arrow.dy = arrow.speed;
+      } else if (dir === 1) {
+        arrow.x = Math.random() * canvas.width;
+        arrow.y = canvas.height + 30;
+        arrow.dx = 0;
+        arrow.dy = -arrow.speed;
+      } else if (dir === 2) {
+        arrow.x = -30;
+        arrow.y = Math.random() * canvas.height;
+        arrow.dx = arrow.speed;
+        arrow.dy = 0;
+      } else {
+        arrow.x = canvas.width + 30;
+        arrow.y = Math.random() * canvas.height;
+        arrow.dx = -arrow.speed;
+        arrow.dy = 0;
+      }
+      arrows.push(arrow);
+    }
+
+    function checkCollision(ball, arrow) {
+      return (
+        ball.x + ball.radius > arrow.x &&
+        ball.x - ball.radius < arrow.x + arrow.width &&
+        ball.y + ball.radius > arrow.y &&
+        ball.y - ball.radius < arrow.y + arrow.height
+      );
+    }
+
+    function drawBall() {
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#00ffcc";
+      ctx.fill();
+      ctx.closePath();
+    }
+
+    function drawArrows() {
+      ctx.fillStyle = "#ff4444";
+      for (const arrow of arrows) {
+        ctx.fillRect(arrow.x, arrow.y, arrow.width, arrow.height);
+      }
+    }
+
+    function drawGameOver() {
+      ctx.fillStyle = "#fff";
+      ctx.font = "48px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 40);
+    }
+
+    function updateTimer() {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      timerDisplay.textContent = `Time: ${elapsed}s`;
+    }
+
+    function updateScore() {
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - startTime) / 1000);
+      currentBonus = 10 + Math.floor(elapsedSeconds / 15) * 5;
+
+      if (now - lastScoreTime >= 1000) {
+        score += currentBonus;
+        lastScoreTime = now;
+        scoreDisplay.textContent = `Score: ${score}`;
+      }
+    }
+
+    function update() {
+      if (gameOver) {
+        drawGameOver();
+        restartBtn.style.display = "block";
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ball.dx = 0;
+      ball.dy = 0;
+      if (keys["ArrowLeft"]) ball.dx = -ball.speed;
+      if (keys["ArrowRight"]) ball.dx = ball.speed;
+      if (keys["ArrowUp"]) ball.dy = -ball.speed;
+      if (keys["ArrowDown"]) ball.dy = ball.speed;
+
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      ball.x = Math.max(ball.radius, Math.min(canvas.width - ball.radius, ball.x));
+      ball.y = Math.max(ball.radius, Math.min(canvas.height - ball.radius, ball.y));
+
+      for (const arrow of arrows) {
+        arrow.x += arrow.dx;
+        arrow.y += arrow.dy;
+        if (checkCollision(ball, arrow)) {
+          gameOver = true;
+        }
+      }
+
+      arrows = arrows.filter(a =>
+        a.x > -50 && a.x < canvas.width + 50 &&
+        a.y > -50 && a.y < canvas.height + 50
+      );
+
+      const now = Date.now();
+      if (now - lastSpawn > spawnInterval) {
+        spawnArrow();
+        lastSpawn = now;
+        if (spawnInterval > 400) spawnInterval -= 20;
+      }
+
+      drawBall();
+      drawArrows();
+      updateTimer();
+      updateScore();
+
+      requestAnimationFrame(update);
+    }
+
+    restartBtn.addEventListener('click', resetGame);
+    resetGame();
+  </script>
+</body>
+</html>
