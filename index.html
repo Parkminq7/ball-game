@@ -1,71 +1,79 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>화살 피하기 게임</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: #111;
-      font-family: sans-serif;
+      background: black;
+      touch-action: none;
     }
     canvas {
       display: block;
+      background: #111;
     }
     #timer, #score {
       position: absolute;
-      top: 15px;
+      top: 10px;
       font-size: 24px;
-      color: white;
+      color: #00ffcc;
       z-index: 10;
+      font-family: monospace;
     }
     #timer {
-      right: 20px;
+      right: 10px;
     }
     #score {
-      left: 20px;
+      left: 10px;
     }
     #restartBtn {
+      display: none;
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      padding: 12px 24px;
+      padding: 16px 32px;
       font-size: 20px;
-      background-color: #00ffcc;
+      background: #00ffcc;
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      display: none;
       z-index: 20;
     }
-    #restartBtn:hover {
-      background-color: #00ddaa;
-    }
 
+    /* 기본 상태에서는 controls 숨김 */
     .controls {
-      display: none; /* 기본: 숨김 */
+      display: none;
       position: absolute;
       bottom: 30px;
       left: 30px;
-      grid-template-columns: 60px 60px 60px;
-      grid-template-rows: 60px 60px 60px;
+      grid-template-columns: 130px 130px 130px;
+      grid-template-rows: 130px 130px 130px;
       gap: 10px;
       z-index: 15;
     }
 
+    /* 터치 가능한 디바이스에서만 보여줌 */
+    @media (pointer: coarse) {
+      .controls {
+        display: grid;
+      }
+    }
+
     .btn {
-      width: 60px;
-      height: 60px;
+      width: 130px;
+      height: 130px;
       background: rgba(255, 255, 255, 0.1);
       border: 2px solid #00ffcc;
       border-radius: 12px;
       color: #00ffcc;
-      font-size: 24px;
+      font-size: 32px;
       text-align: center;
-      line-height: 60px;
+      line-height: 130px;
       user-select: none;
     }
     .btn:active {
@@ -74,226 +82,175 @@
   </style>
 </head>
 <body>
+  <canvas id="gameCanvas"></canvas>
   <div id="timer">Time: 0s</div>
   <div id="score">Score: 0</div>
   <button id="restartBtn">재시작</button>
-
-  <!-- ✅ 버추얼 방향키 -->
-  <div class="controls">
-    <div></div>
-    <div class="btn" data-dir="up">↑</div>
-    <div></div>
-    <div class="btn" data-dir="left">←</div>
-    <div></div>
-    <div class="btn" data-dir="right">→</div>
-    <div></div>
-    <div class="btn" data-dir="down">↓</div>
-    <div></div>
+  <div class="controls" id="controls">
+    <div></div> <div class="btn" id="upBtn">↑</div> <div></div>
+    <div class="btn" id="leftBtn">←</div> <div></div> <div class="btn" id="rightBtn">→</div>
+    <div></div> <div class="btn" id="downBtn">↓</div> <div></div>
   </div>
 
-  <canvas id="gameCanvas"></canvas>
-
   <script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const timerDisplay = document.getElementById('timer');
-    const scoreDisplay = document.getElementById('score');
-    const restartBtn = document.getElementById('restartBtn');
-    const controls = document.querySelectorAll('.btn');
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let ball = { x: 100, y: 100, r: 20, speed: 5 };
+    let arrows = [];
+    let keys = {};
+    let score = 0;
+    let time = 0;
+    let gameOver = false;
+    let arrowInterval = 2000;
+    let lastArrowTime = 0;
+    let lastTime = Date.now();
+    const restartBtn = document.getElementById("restartBtn");
 
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     }
 
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    let ball, arrows, keys, gameOver, spawnInterval, lastSpawn;
-    let startTime, lastScoreTime, score, currentBonus;
-
     function resetGame() {
-      ball = {
-        x: canvas.width / 2,
-        y: canvas.height / 2,
-        radius: 15,
-        speed: 5,
-        dx: 0,
-        dy: 0,
-      };
-      keys = {};
+      ball.x = canvas.width / 2;
+      ball.y = canvas.height / 2;
       arrows = [];
-      gameOver = false;
-      spawnInterval = 1500;
-      lastSpawn = Date.now();
-      startTime = Date.now();
-      lastScoreTime = Date.now();
       score = 0;
-      currentBonus = 10;
-      scoreDisplay.textContent = `Score: 0`;
-      timerDisplay.textContent = `Time: 0s`;
+      time = 0;
+      gameOver = false;
+      arrowInterval = 2000;
+      lastArrowTime = 0;
+      lastTime = Date.now();
       restartBtn.style.display = "none";
-      requestAnimationFrame(update);
+      animate();
     }
-
-    document.addEventListener('keydown', e => keys[e.key] = true);
-    document.addEventListener('keyup', e => keys[e.key] = false);
-
-    controls.forEach(btn => {
-      const dir = btn.dataset.dir;
-      const setKey = (state) => {
-        keys[`Arrow${dir.charAt(0).toUpperCase() + dir.slice(1)}`] = state;
-      };
-      btn.addEventListener('touchstart', e => { e.preventDefault(); setKey(true); });
-      btn.addEventListener('touchend', e => { e.preventDefault(); setKey(false); });
-      btn.addEventListener('mousedown', () => setKey(true));
-      btn.addEventListener('mouseup', () => setKey(false));
-      btn.addEventListener('mouseleave', () => setKey(false));
-    });
 
     function spawnArrow() {
-      const dir = Math.floor(Math.random() * 4);
-      let arrow = {
-        width: 10,
-        height: 30,
-        speed: 2 + Math.random() * 2,
-      };
-      if (dir === 0) {
-        arrow.x = Math.random() * canvas.width;
-        arrow.y = -30;
-        arrow.dx = 0;
-        arrow.dy = arrow.speed;
-      } else if (dir === 1) {
-        arrow.x = Math.random() * canvas.width;
-        arrow.y = canvas.height + 30;
-        arrow.dx = 0;
-        arrow.dy = -arrow.speed;
-      } else if (dir === 2) {
-        arrow.x = -30;
-        arrow.y = Math.random() * canvas.height;
-        arrow.dx = arrow.speed;
-        arrow.dy = 0;
-      } else {
-        arrow.x = canvas.width + 30;
-        arrow.y = Math.random() * canvas.height;
-        arrow.dx = -arrow.speed;
-        arrow.dy = 0;
-      }
-      arrows.push(arrow);
-    }
+      const side = Math.floor(Math.random() * 4);
+      const speed = 3 + Math.random() * 2;
+      let x, y, dx, dy;
 
-    function checkCollision(ball, arrow) {
-      return (
-        ball.x + ball.radius > arrow.x &&
-        ball.x - ball.radius < arrow.x + arrow.width &&
-        ball.y + ball.radius > arrow.y &&
-        ball.y - ball.radius < arrow.y + arrow.height
-      );
+      switch (side) {
+        case 0:
+          x = Math.random() * canvas.width;
+          y = 0;
+          dx = (ball.x - x) * 0.01;
+          dy = speed;
+          break;
+        case 1:
+          x = Math.random() * canvas.width;
+          y = canvas.height;
+          dx = (ball.x - x) * 0.01;
+          dy = -speed;
+          break;
+        case 2:
+          x = 0;
+          y = Math.random() * canvas.height;
+          dx = speed;
+          dy = (ball.y - y) * 0.01;
+          break;
+        case 3:
+          x = canvas.width;
+          y = Math.random() * canvas.height;
+          dx = -speed;
+          dy = (ball.y - y) * 0.01;
+          break;
+      }
+
+      arrows.push({ x, y, dx, dy, size: 10 });
     }
 
     function drawBall() {
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       ctx.fillStyle = "#00ffcc";
       ctx.fill();
       ctx.closePath();
     }
 
     function drawArrows() {
-      ctx.fillStyle = "#ff4444";
-      for (const arrow of arrows) {
-        ctx.fillRect(arrow.x, arrow.y, arrow.width, arrow.height);
-      }
-    }
-
-    function drawGameOver() {
-      ctx.fillStyle = "#fff";
-      ctx.font = "48px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 40);
-    }
-
-    function updateTimer() {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      timerDisplay.textContent = `Time: ${elapsed}s`;
-    }
-
-    function updateScore() {
-      const now = Date.now();
-      const elapsedSeconds = Math.floor((now - startTime) / 1000);
-      currentBonus = 10 + Math.floor(elapsedSeconds / 15) * 5;
-
-      if (now - lastScoreTime >= 1000) {
-        score += currentBonus;
-        lastScoreTime = now;
-        scoreDisplay.textContent = `Score: ${score}`;
-      }
+      ctx.fillStyle = "red";
+      arrows.forEach(a => {
+        ctx.beginPath();
+        ctx.rect(a.x, a.y, a.size, a.size);
+        ctx.fill();
+        ctx.closePath();
+      });
     }
 
     function update() {
-      if (gameOver) {
-        drawGameOver();
-        restartBtn.style.display = "block";
-        return;
-      }
+      if (keys["ArrowUp"]) ball.y -= ball.speed;
+      if (keys["ArrowDown"]) ball.y += ball.speed;
+      if (keys["ArrowLeft"]) ball.x -= ball.speed;
+      if (keys["ArrowRight"]) ball.x += ball.speed;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      arrows.forEach(a => {
+        a.x += a.dx;
+        a.y += a.dy;
+      });
 
-      ball.dx = 0;
-      ball.dy = 0;
-      if (keys["ArrowLeft"]) ball.dx = -ball.speed;
-      if (keys["ArrowRight"]) ball.dx = ball.speed;
-      if (keys["ArrowUp"]) ball.dy = -ball.speed;
-      if (keys["ArrowDown"]) ball.dy = ball.speed;
-
-      ball.x += ball.dx;
-      ball.y += ball.dy;
-
-      ball.x = Math.max(ball.radius, Math.min(canvas.width - ball.radius, ball.x));
-      ball.y = Math.max(ball.radius, Math.min(canvas.height - ball.radius, ball.y));
-
-      for (const arrow of arrows) {
-        arrow.x += arrow.dx;
-        arrow.y += arrow.dy;
-        if (checkCollision(ball, arrow)) {
+      for (let a of arrows) {
+        const dx = a.x - ball.x;
+        const dy = a.y - ball.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < ball.r + a.size / 2) {
           gameOver = true;
+          restartBtn.style.display = "block";
         }
       }
 
-      arrows = arrows.filter(a =>
-        a.x > -50 && a.x < canvas.width + 50 &&
-        a.y > -50 && a.y < canvas.height + 50
-      );
-
       const now = Date.now();
-      if (now - lastSpawn > spawnInterval) {
+      if (now - lastArrowTime > arrowInterval) {
         spawnArrow();
-        lastSpawn = now;
-        if (spawnInterval > 400) spawnInterval -= 20;
+        lastArrowTime = now;
       }
 
+      if (!gameOver) {
+        const elapsed = (now - lastTime) / 1000;
+        if (elapsed >= 1) {
+          time++;
+          let bonus = Math.floor(time / 15) * 5;
+          score += 10 + bonus;
+          lastTime = now;
+          document.getElementById("score").textContent = "Score: " + score;
+          document.getElementById("timer").textContent = "Time: " + time + "s";
+          if (time % 10 === 0 && arrowInterval > 500) {
+            arrowInterval -= 100;
+          }
+        }
+      }
+    }
+
+    function animate() {
+      if (gameOver) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBall();
       drawArrows();
-      updateTimer();
-      updateScore();
-
-      requestAnimationFrame(update);
+      update();
+      requestAnimationFrame(animate);
     }
 
-    restartBtn.addEventListener('click', resetGame);
-
-    // ✅ 자바스크립트로 모바일 감지
-    function isMobile() {
-      return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    }
+    window.addEventListener("keydown", e => keys[e.key] = true);
+    window.addEventListener("keyup", e => keys[e.key] = false);
+    window.addEventListener("resize", resizeCanvas);
+    restartBtn.addEventListener("click", resetGame);
 
     window.addEventListener("load", () => {
-      const controlPad = document.querySelector(".controls");
-      if (isMobile()) {
-        controlPad.style.display = "grid";
-      } else {
-        controlPad.style.display = "none";
-      }
+      resizeCanvas();
+
+      // 버추얼 버튼 동작 (보이기 X, 오직 동작만)
+      document.getElementById("upBtn").ontouchstart = () => keys["ArrowUp"] = true;
+      document.getElementById("downBtn").ontouchstart = () => keys["ArrowDown"] = true;
+      document.getElementById("leftBtn").ontouchstart = () => keys["ArrowLeft"] = true;
+      document.getElementById("rightBtn").ontouchstart = () => keys["ArrowRight"] = true;
+
+      document.getElementById("upBtn").ontouchend =
+      document.getElementById("downBtn").ontouchend =
+      document.getElementById("leftBtn").ontouchend =
+      document.getElementById("rightBtn").ontouchend = () => {
+        keys["ArrowUp"] = keys["ArrowDown"] = keys["ArrowLeft"] = keys["ArrowRight"] = false;
+      };
 
       resetGame();
     });
