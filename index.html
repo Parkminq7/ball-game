@@ -2,258 +2,249 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>화살 피하기 게임</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: black;
-      touch-action: none;
+      height: 100%;
     }
+
     canvas {
       display: block;
-      background: #111;
-    }
-    #timer, #score {
-      position: absolute;
-      top: 10px;
-      font-size: 24px;
-      color: #00ffcc;
-      z-index: 10;
-      font-family: monospace;
-    }
-    #timer {
-      right: 10px;
-    }
-    #score {
-      left: 10px;
-    }
-    #restartBtn {
-      display: none;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 16px 32px;
-      font-size: 20px;
-      background: #00ffcc;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      z-index: 20;
     }
 
-    /* 기본 상태에서는 controls 숨김 */
     .controls {
-      display: none;
       position: absolute;
-      bottom: 30px;
-      left: 30px;
-      grid-template-columns: 130px 130px 130px;
-      grid-template-rows: 130px 130px 130px;
-      gap: 10px;
-      z-index: 15;
+      z-index: 10;
+      display: grid;
+      gap: 6px;
     }
 
-    /* 터치 가능한 디바이스에서만 보여줌 */
+    .btn {
+      background-color: rgba(0,0,0,0.4);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      text-align: center;
+    }
+
     @media (pointer: coarse) {
       .controls {
         display: grid;
       }
     }
 
-    .btn {
-      width: 130px;
-      height: 130px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 2px solid #00ffcc;
-      border-radius: 12px;
-      color: #00ffcc;
-      font-size: 32px;
-      text-align: center;
-      line-height: 130px;
-      user-select: none;
+    @media (pointer: fine) {
+      .controls {
+        display: none;
+      }
     }
-    .btn:active {
-      background: rgba(0, 255, 204, 0.3);
+
+    @media (orientation: portrait) and (pointer: coarse) {
+      .controls {
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        grid-template-columns: 83px 83px 83px;
+        grid-template-rows: 83px 83px 83px;
+      }
+      .btn {
+        width: 83px;
+        height: 83px;
+        font-size: 22px;
+        line-height: 83px;
+      }
+    }
+
+    @media (orientation: landscape) and (pointer: coarse) {
+      .controls {
+        bottom: 30px;
+        left: 10px;
+        transform: none;
+        grid-template-columns: 83px 83px 83px;
+        grid-template-rows: 83px 83px 83px;
+      }
+      .btn {
+        width: 83px;
+        height: 83px;
+        font-size: 22px;
+        line-height: 83px;
+      }
+    }
+
+    #scoreboard {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      font-size: 24px;
+      color: white;
+      z-index: 5;
+    }
+
+    #restartButton {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 24px;
+      padding: 10px 20px;
+      display: none;
+      z-index: 20;
     }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <div id="timer">Time: 0s</div>
-  <div id="score">Score: 0</div>
-  <button id="restartBtn">재시작</button>
+  <div id="scoreboard">점수: 0</div>
+  <button id="restartButton">재시작</button>
   <div class="controls" id="controls">
-    <div></div> <div class="btn" id="upBtn">↑</div> <div></div>
-    <div class="btn" id="leftBtn">←</div> <div></div> <div class="btn" id="rightBtn">→</div>
-    <div></div> <div class="btn" id="downBtn">↓</div> <div></div>
+    <button class="btn" data-dir="up">↑</button>
+    <button class="btn" data-dir="left">←</button>
+    <button class="btn" data-dir="down">↓</button>
+    <button class="btn" data-dir="right">→</button>
   </div>
-
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
+    const scoreboard = document.getElementById("scoreboard");
+    const restartButton = document.getElementById("restartButton");
 
-    let ball = { x: 100, y: 100, r: 20, speed: 5 };
-    let arrows = [];
-    let keys = {};
+    let width, height;
     let score = 0;
-    let time = 0;
-    let gameOver = false;
-    let arrowInterval = 2000;
-    let lastArrowTime = 0;
-    let lastTime = Date.now();
-    const restartBtn = document.getElementById("restartBtn");
+    let gameStartTime;
 
     function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
     }
 
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    let player, keys, arrows, gameOver, arrowSpeedMultiplier;
+
     function resetGame() {
-      ball.x = canvas.width / 2;
-      ball.y = canvas.height / 2;
+      player = { x: 100, y: 100, size: 30, color: "red" };
+      keys = { up: false, down: false, left: false, right: false };
       arrows = [];
-      score = 0;
-      time = 0;
       gameOver = false;
-      arrowInterval = 2000;
-      lastArrowTime = 0;
-      lastTime = Date.now();
-      restartBtn.style.display = "none";
-      animate();
+      arrowSpeedMultiplier = 1;
+      score = 0;
+      gameStartTime = Date.now();
+      restartButton.style.display = "none";
     }
 
     function spawnArrow() {
       const side = Math.floor(Math.random() * 4);
-      const speed = 3 + Math.random() * 2;
-      let x, y, dx, dy;
+      let x, y, vx = 0, vy = 0;
+      const baseSpeed = 3 + Math.random() * 2;
+      const speed = baseSpeed * arrowSpeedMultiplier;
 
-      switch (side) {
-        case 0:
-          x = Math.random() * canvas.width;
-          y = 0;
-          dx = (ball.x - x) * 0.01;
-          dy = speed;
-          break;
-        case 1:
-          x = Math.random() * canvas.width;
-          y = canvas.height;
-          dx = (ball.x - x) * 0.01;
-          dy = -speed;
-          break;
-        case 2:
-          x = 0;
-          y = Math.random() * canvas.height;
-          dx = speed;
-          dy = (ball.y - y) * 0.01;
-          break;
-        case 3:
-          x = canvas.width;
-          y = Math.random() * canvas.height;
-          dx = -speed;
-          dy = (ball.y - y) * 0.01;
-          break;
-      }
+      if (side === 0) { x = Math.random() * width; y = 0; vy = speed; }
+      else if (side === 1) { x = width; y = Math.random() * height; vx = -speed; }
+      else if (side === 2) { x = Math.random() * width; y = height; vy = -speed; }
+      else { x = 0; y = Math.random() * height; vx = speed; }
 
-      arrows.push({ x, y, dx, dy, size: 10 });
+      arrows.push({ x, y, vx, vy, size: 10 });
     }
 
-    function drawBall() {
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-      ctx.fillStyle = "#00ffcc";
-      ctx.fill();
-      ctx.closePath();
-    }
-
-    function drawArrows() {
-      ctx.fillStyle = "red";
-      arrows.forEach(a => {
-        ctx.beginPath();
-        ctx.rect(a.x, a.y, a.size, a.size);
-        ctx.fill();
-        ctx.closePath();
-      });
-    }
+    setInterval(spawnArrow, 1000);
 
     function update() {
-      if (keys["ArrowUp"]) ball.y -= ball.speed;
-      if (keys["ArrowDown"]) ball.y += ball.speed;
-      if (keys["ArrowLeft"]) ball.x -= ball.speed;
-      if (keys["ArrowRight"]) ball.x += ball.speed;
-
-      arrows.forEach(a => {
-        a.x += a.dx;
-        a.y += a.dy;
-      });
-
-      for (let a of arrows) {
-        const dx = a.x - ball.x;
-        const dy = a.y - ball.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < ball.r + a.size / 2) {
-          gameOver = true;
-          restartBtn.style.display = "block";
-        }
-      }
+      if (gameOver) return;
 
       const now = Date.now();
-      if (now - lastArrowTime > arrowInterval) {
-        spawnArrow();
-        lastArrowTime = now;
-      }
+      const elapsed = (now - gameStartTime) / 1000;
 
-      if (!gameOver) {
-        const elapsed = (now - lastTime) / 1000;
-        if (elapsed >= 1) {
-          time++;
-          let bonus = Math.floor(time / 15) * 5;
-          score += 10 + bonus;
-          lastTime = now;
-          document.getElementById("score").textContent = "Score: " + score;
-          document.getElementById("timer").textContent = "Time: " + time + "s";
-          if (time % 10 === 0 && arrowInterval > 500) {
-            arrowInterval -= 100;
-          }
+      arrowSpeedMultiplier = 1 + Math.floor(elapsed / 15) * 0.3;
+
+      score = Math.floor(elapsed * 10) + Math.floor(elapsed / 15) * 5;
+      scoreboard.textContent = `점수: ${score}`;
+
+      const speed = 5;
+      if (keys.up) player.y -= speed;
+      if (keys.down) player.y += speed;
+      if (keys.left) player.x -= speed;
+      if (keys.right) player.x += speed;
+
+      arrows.forEach(arrow => {
+        arrow.x += arrow.vx;
+        arrow.y += arrow.vy;
+      });
+
+      arrows.forEach(arrow => {
+        const dx = arrow.x - player.x;
+        const dy = arrow.y - player.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < arrow.size + player.size) {
+          gameOver = true;
+          restartButton.style.display = "block";
         }
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "black";
+      arrows.forEach(arrow => {
+        ctx.beginPath();
+        ctx.arc(arrow.x, arrow.y, arrow.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "white";
+        ctx.font = "36px sans-serif";
+        ctx.fillText("게임 오버", width / 2 - 80, height / 2);
       }
     }
 
-    function animate() {
-      if (gameOver) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawBall();
-      drawArrows();
+    function gameLoop() {
       update();
-      requestAnimationFrame(animate);
+      draw();
+      requestAnimationFrame(gameLoop);
     }
 
-    window.addEventListener("keydown", e => keys[e.key] = true);
-    window.addEventListener("keyup", e => keys[e.key] = false);
-    window.addEventListener("resize", resizeCanvas);
-    restartBtn.addEventListener("click", resetGame);
-
-    window.addEventListener("load", () => {
-      resizeCanvas();
-
-      // 버추얼 버튼 동작 (보이기 X, 오직 동작만)
-      document.getElementById("upBtn").ontouchstart = () => keys["ArrowUp"] = true;
-      document.getElementById("downBtn").ontouchstart = () => keys["ArrowDown"] = true;
-      document.getElementById("leftBtn").ontouchstart = () => keys["ArrowLeft"] = true;
-      document.getElementById("rightBtn").ontouchstart = () => keys["ArrowRight"] = true;
-
-      document.getElementById("upBtn").ontouchend =
-      document.getElementById("downBtn").ontouchend =
-      document.getElementById("leftBtn").ontouchend =
-      document.getElementById("rightBtn").ontouchend = () => {
-        keys["ArrowUp"] = keys["ArrowDown"] = keys["ArrowLeft"] = keys["ArrowRight"] = false;
-      };
-
-      resetGame();
+    document.querySelectorAll('.btn').forEach(btn => {
+      btn.addEventListener('touchstart', (e) => {
+        keys[e.target.dataset.dir] = true;
+      });
+      btn.addEventListener('touchend', (e) => {
+        keys[e.target.dataset.dir] = false;
+      });
     });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") keys.up = true;
+      if (e.key === "ArrowDown") keys.down = true;
+      if (e.key === "ArrowLeft") keys.left = true;
+      if (e.key === "ArrowRight") keys.right = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowUp") keys.up = false;
+      if (e.key === "ArrowDown") keys.down = false;
+      if (e.key === "ArrowLeft") keys.left = false;
+      if (e.key === "ArrowRight") keys.right = false;
+    });
+
+    restartButton.addEventListener("click", resetGame);
+
+    resetGame();
+    gameLoop();
   </script>
 </body>
 </html>
