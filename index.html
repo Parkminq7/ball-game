@@ -1,4 +1,4 @@
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
@@ -44,17 +44,18 @@
     #restartBtn:hover {
       background-color: #00ddaa;
     }
+
     .controls {
+      display: none; /* 기본: 숨김 */
       position: absolute;
       bottom: 30px;
-      left: 100px;
-      transform: translateX(-50%);
-      display: grid;
+      left: 30px;
       grid-template-columns: 60px 60px 60px;
       grid-template-rows: 60px 60px 60px;
       gap: 10px;
       z-index: 15;
     }
+
     .btn {
       width: 60px;
       height: 60px;
@@ -77,6 +78,7 @@
   <div id="score">Score: 0</div>
   <button id="restartBtn">재시작</button>
 
+  <!-- ✅ 버추얼 방향키 -->
   <div class="controls">
     <div></div>
     <div class="btn" data-dir="up">↑</div>
@@ -279,7 +281,22 @@
     }
 
     restartBtn.addEventListener('click', resetGame);
-    resetGame();
+
+    // ✅ 자바스크립트로 모바일 감지
+    function isMobile() {
+      return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    window.addEventListener("load", () => {
+      const controlPad = document.querySelector(".controls");
+      if (isMobile()) {
+        controlPad.style.display = "grid";
+      } else {
+        controlPad.style.display = "none";
+      }
+
+      resetGame();
+    });
   </script>
 </body>
 </html>
